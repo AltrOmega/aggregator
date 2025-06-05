@@ -11,16 +11,16 @@ type Config struct {
 	Current_user_name string `json:"current_user_name"`
 }
 
-func (cfg Config) SetUser(username string) (Config, error) {
+func (cfg *Config) SetUser(username string) error {
 	cfg.Current_user_name = username
-	err := Write(cfg)
-	return cfg, err
+	err := Write(*cfg)
+	return err
 }
 
-func (cfg Config) SetDbUrl(dbUrl string) (Config, error) {
+func (cfg *Config) SetDbUrl(dbUrl string) error {
 	cfg.Db_url = dbUrl
-	err := Write(cfg)
-	return cfg, err
+	err := Write(*cfg)
+	return err
 }
 
 const ConfigFileName = `.gatorconfig.json`
@@ -37,8 +37,7 @@ func GetConfigFilePath() (string, error) {
 func (cfg Config) AsByte() ([]byte, error) {
 	jsonData, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
-		fmt.Println("Error marshalling JSON: ", err)
-		return nil, err
+		return nil, fmt.Errorf("error marshalling JSON: %w", err)
 	}
 	return jsonData, nil
 }
@@ -46,21 +45,18 @@ func (cfg Config) AsByte() ([]byte, error) {
 func Read() (Config, error) {
 	file_path, err := GetConfigFilePath()
 	if err != nil {
-		fmt.Println("GetConfigFilePath error: ", err)
-		return Config{}, err
+		return Config{}, fmt.Errorf("error in GetConfigFilePath: %w", err)
 	}
 
 	file, err := os.ReadFile(file_path)
 	if err != nil {
-		fmt.Println("File read error: ", err)
-		return Config{}, err
+		return Config{}, fmt.Errorf("file read error: %w", err)
 	}
 
 	var config Config
 	err = json.Unmarshal([]byte(file), &config)
 	if err != nil {
-		fmt.Println("Json unmarshal error: ", err)
-		return Config{}, err
+		return Config{}, fmt.Errorf("json unmarshal error: %w", err)
 	}
 
 	return config, nil
@@ -69,27 +65,23 @@ func Read() (Config, error) {
 func Write(cfg Config) error {
 	file_path, err := GetConfigFilePath()
 	if err != nil {
-		fmt.Println("GetConfigFilePath error: ", err)
-		return err
+		return fmt.Errorf("error in GetConfigFilePath: %w", err)
 	}
 
 	jsonData, err := cfg.AsByte()
 	if err != nil {
-		fmt.Println("Error Byteing cfg: ", err)
-		return err
+		return fmt.Errorf("error Byteing cfg: %w", err)
 	}
 
 	file, err := os.Create(file_path)
 	if err != nil {
-		fmt.Println("Error opening file to write: ", err)
-		return err
+		return fmt.Errorf("error opening file to write: %w", err)
 	}
 	defer file.Close()
 
 	_, err = file.Write(jsonData)
 	if err != nil {
-		fmt.Println("Error writing to file: ", err)
-		return err
+		return fmt.Errorf("error writing to file: %w", err)
 	}
 
 	return nil
