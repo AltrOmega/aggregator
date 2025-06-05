@@ -5,7 +5,11 @@ import (
 	"aggreGATOR/internal/database"
 	"context"
 	"database/sql"
+	"encoding/xml"
 	"fmt"
+	"html"
+	"io"
+	"net/http"
 	"os"
 	"time"
 
@@ -115,6 +119,15 @@ func handlerGetUsers(s *state, cmd command) error {
 	return nil
 }
 
+func handlerAggregate(s *state, cmd command) error {
+	feed, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
+	if err != nil {
+		return err
+	}
+	fmt.Println(feed)
+	return nil
+}
+
 func handlerWho(s *state, cmd command) error {
 	if s.config.Current_user_name == "" {
 		fmt.Println("Not logged in as any user.")
@@ -122,6 +135,54 @@ func handlerWho(s *state, cmd command) error {
 	}
 	fmt.Println("Loged in as:", s.config.Current_user_name)
 	return nil
+}
+
+type RSSFeed struct {
+	Channel struct {
+		Title       string    `xml:"title"`
+		Link        string    `xml:"link"`
+		Description string    `xml:"description"`
+		Item        []RSSItem `xml:"item"`
+	} `xml:"channel"`
+}
+
+type RSSItem struct {
+	Title       string `xml:"title"`
+	Link        string `xml:"link"`
+	Description string `xml:"description"`
+	PubDate     string `xml:"pubDate"`
+}
+
+func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
+	// Prepare and send the http request
+	req, err := http.NewRequestWithContext(ctx, "GET", feedURL, nil)
+	if err != nil {
+		return &RSSFeed{}, fmt.Errorf("Failed to make request: ", err)
+	}
+	req.Header.Set("User-Agent", "gator")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return &RSSFeed{}, fmt.Errorf("Failed get: ", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return &RSSFeed{}, fmt.Errorf("Failed status: ", err)
+	}
+	// Unmarshall what we got
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return &RSSFeed{}, fmt.Errorf("Failed ReadAll: ", err)
+	}
+
+	var ret RSSFeed
+	err = xml.Unmarshal([]byte(body), &ret)
+	if err != nil {
+		return &RSSFeed{}, fmt.Errorf("Failed Unmarshal: ", err)
+	}
+	ret.Channel.Title = html.UnescapeString(ret.Channel.Title)
+	ret.Channel.Description = html.UnescapeString(ret.Channel.Description)
+	return &ret, nil
 }
 
 func main() {
@@ -150,6 +211,7 @@ func main() {
 	c.register("users", handlerGetUsers)
 	c.register("user", handlerWho)
 	c.register("reset", handlerReset)
+	c.register("agg", handlerAggregate)
 	c.register("help", func(*state, command) error { return fmt.Errorf("No. https://www.youtube.com/watch?v=gWm2NzNLc_A") })
 	if len(os.Args) == 1 {
 		fmt.Println(`No command was specified. Try "help".`)
