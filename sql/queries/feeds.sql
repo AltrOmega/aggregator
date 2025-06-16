@@ -1,0 +1,30 @@
+-- name: CreateFeeds :one
+INSERT INTO feeds (id, created_at, updated_at, name, url, user_id)
+VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6
+)
+RETURNING *;
+
+-- name: GetFeed :one
+
+SELECT * FROM feeds
+WHERE name = $1;
+
+-- name: ResetFeeds :exec
+
+DELETE FROM feeds;
+
+-- name: GetFeedsRaw :many
+
+SELECT * FROM feeds;
+
+-- name: GetFeeds :many
+
+SELECT f.name AS feed_name, f.url AS feed_URL, u.name AS user_name
+FROM feeds AS f
+JOIN users AS u ON f.user_id = u.id;

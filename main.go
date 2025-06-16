@@ -93,7 +93,7 @@ func handlerRegister(s *state, cmd command) error {
 }
 
 func handlerReset(s *state, cmd command) error {
-	err := s.db.Reset(context.Background())
+	err := s.db.ResetUsers(context.Background())
 	if err != nil {
 		return err
 	}
@@ -185,6 +185,53 @@ func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
 	return &ret, nil
 }
 
+func handlerAddFeed(s *state, cmd command) error {
+	if len(cmd.args) <= 1 {
+		return fmt.Errorf("addfeed expects at least a two arguments")
+	}
+
+	user, err := s.db.GetUser(context.Background(), s.config.Current_user_name)
+	if err != nil {
+		return fmt.Errorf("error geting current user: %w", err)
+	}
+
+	now := time.Now()
+	feed, err := s.db.CreateFeeds(context.Background(),
+		database.CreateFeedsParams{
+			ID:        uuid.New(),
+			CreatedAt: now,
+			UpdatedAt: now,
+			Name:      cmd.args[0],
+			Url:       cmd.args[1],
+			UserID: uuid.NullUUID{
+				UUID:  user.ID,
+				Valid: true,
+			},
+		})
+
+	if err != nil {
+		return fmt.Errorf("create feed error: %w", err)
+	}
+
+	fmt.Printf(`A new Feed has been created with the name: "%s" and url: "%s"`, feed.Name, feed.Url)
+	return nil
+}
+
+func handlerGetFeeds(s *state, cmd command) error {
+	feeds, err := s.db.GetFeeds(context.Background())
+	if err != nil {
+		return fmt.Errorf("error geting feeds: %w", err)
+	}
+
+	fmt.Println("Feed name, Feed url, User name")
+	for i := range feeds {
+		//database.GetFeedsRow
+		fmt.Printf("* %s, %s, %s\n", feeds[i].FeedName, feeds[i].FeedUrl, feeds[i].UserName)
+	}
+
+	return nil
+}
+
 func main() {
 	cfg, err := config.Read()
 	if err != nil {
@@ -212,6 +259,8 @@ func main() {
 	c.register("user", handlerWho)
 	c.register("reset", handlerReset)
 	c.register("agg", handlerAggregate)
+	c.register("addfeed", handlerAddFeed)
+	c.register("feeds", handlerGetFeeds)
 	c.register("help", func(*state, command) error { return fmt.Errorf("No. https://www.youtube.com/watch?v=gWm2NzNLc_A") })
 	if len(os.Args) == 1 {
 		fmt.Println(`No command was specified. Try "help".`)
