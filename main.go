@@ -51,7 +51,7 @@ func (c *commands) register(name string, f func(*state, command) error) {
 	c.callbacks[name] = f
 }
 
-func handlerLogin(s *state, cmd command) error {
+func handlerLogin(s *state, cmd command, user database.User) error {
 	if len(cmd.args) == 0 {
 		return fmt.Errorf("login expects at least a single argument")
 	}
@@ -103,7 +103,7 @@ func handlerReset(s *state, cmd command) error {
 	return nil
 }
 
-func handlerGetUsers(s *state, cmd command) error {
+func handlerGetUsers(s *state, cmd command, user database.User) error {
 	users, err := s.db.GetUsers(context.Background())
 	if err != nil {
 		return err
@@ -185,7 +185,7 @@ func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
 	return &ret, nil
 }
 
-func handlerAddFeed(s *state, cmd command) error {
+func handlerAddFeed(s *state, cmd command, user database.User) error {
 	if len(cmd.args) <= 1 {
 		return fmt.Errorf("addfeed expects at least a two arguments")
 	}
@@ -252,14 +252,9 @@ func handlerGetFeeds(s *state, cmd command) error {
 	return nil
 }
 
-func handlerFollow(s *state, cmd command) error {
+func handlerFollow(s *state, cmd command, user database.User) error {
 	if len(cmd.args) == 0 {
 		return fmt.Errorf("follow expects at least a single argument")
-	}
-
-	user, err := s.db.GetUser(context.Background(), s.config.Current_user_name)
-	if err != nil {
-		return fmt.Errorf("error geting current user: %w", err)
 	}
 
 	now := time.Now()
@@ -305,7 +300,7 @@ func handlerFollow(s *state, cmd command) error {
 	return nil
 }
 
-func handlerFollowing(s *state, cmd command) error {
+func handlerFollowing(s *state, cmd command, user database.User) error {
 	user, err := s.db.GetUser(context.Background(), s.config.Current_user_name)
 	if err != nil {
 		return fmt.Errorf("error geting current user: %w", err)
@@ -329,6 +324,19 @@ func handlerFollowing(s *state, cmd command) error {
 	return nil
 }
 
+func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) error) func(*state, command) error {
+	newHandler := func(s *state, cmd command) error {
+		user, err := s.db.GetUser(context.Background(), s.config.Current_user_name)
+		if err != nil {
+			return fmt.Errorf("error getting current user: %w", err)
+		}
+
+		return handler(s, cmd, user)
+	}
+
+	return newHandler
+}
+
 func main() {
 	cfg, err := config.Read()
 	if err != nil {
@@ -350,16 +358,16 @@ func main() {
 
 	var c commands
 	c.callbacks = make(map[string]func(*state, command) error)
-	c.register("login", handlerLogin)
+	c.register("login", middlewareLoggedIn(handlerLogin))
 	c.register("register", handlerRegister)
-	c.register("users", handlerGetUsers)
+	c.register("users", middlewareLoggedIn(handlerGetUsers))
 	c.register("user", handlerWho)
 	c.register("reset", handlerReset)
 	c.register("agg", handlerAggregate)
-	c.register("addfeed", handlerAddFeed)
+	c.register("addfeed", middlewareLoggedIn(handlerAddFeed))
 	c.register("feeds", handlerGetFeeds)
-	c.register("follow", handlerFollow)
-	c.register("following", handlerFollowing)
+	c.register("follow", middlewareLoggedIn(handlerFollow))
+	c.register("following", middlewareLoggedIn(handlerFollowing))
 	c.register("help", func(*state, command) error { return fmt.Errorf("No. https://www.youtube.com/watch?v=gWm2NzNLc_A") })
 	if len(os.Args) == 1 {
 		fmt.Println(`No command was specified. Try "help".`)
