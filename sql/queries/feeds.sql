@@ -10,10 +10,15 @@ VALUES (
 )
 RETURNING *;
 
--- name: GetFeed :one
+-- name: GetFeedByName :one
 
 SELECT * FROM feeds
 WHERE name = $1;
+
+-- name: GetFeedByURL :one
+
+SELECT * FROM feeds
+WHERE url = $1;
 
 -- name: ResetFeeds :exec
 
