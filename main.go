@@ -100,6 +100,13 @@ func handlerReset(s *state, cmd command) error {
 
 	fmt.Println("User table reset")
 	s.config.SetUser("")
+
+	err = s.db.ResetFeedFollows(context.Background())
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("FeedFollows table reset")
 	return nil
 }
 
@@ -258,21 +265,6 @@ func handlerFollow(s *state, cmd command, user database.User) error {
 	}
 
 	now := time.Now()
-	/* We are suposed to get the feed by url not create one
-	feed, err := s.db.CreateFeeds(context.Background(), database.CreateFeedsParams{
-		ID:        uuid.New(),
-		CreatedAt: now,
-		UpdatedAt: now,
-		Name:      cmd.args[0],
-		Url:       cmd.args[1],
-		UserID: uuid.NullUUID{
-			UUID:  user.ID,
-			Valid: true,
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("error creating feed: %w", err)
-	}*/
 	feed, err := s.db.GetFeedByURL(context.Background(), cmd.args[0])
 	if err != nil {
 		return fmt.Errorf("error on get feed by url: %w", err)
@@ -301,11 +293,6 @@ func handlerFollow(s *state, cmd command, user database.User) error {
 }
 
 func handlerFollowing(s *state, cmd command, user database.User) error {
-	user, err := s.db.GetUser(context.Background(), s.config.Current_user_name)
-	if err != nil {
-		return fmt.Errorf("error geting current user: %w", err)
-	}
-
 	follows, err := s.db.GetFeedFollowsForUser(context.Background(), user.ID)
 	if err != nil {
 		return fmt.Errorf("error geting current users follows: %w", err)
@@ -319,6 +306,29 @@ func handlerFollowing(s *state, cmd command, user database.User) error {
 
 	for _, feed := range follows {
 		fmt.Printf("%s, %s\n", feed.FeedName, feed.FeedUrl)
+	}
+
+	return nil
+}
+
+func handlerUnfollow(s *state, cmd command, user database.User) error {
+	if len(cmd.args) == 0 {
+		return fmt.Errorf("follow expects at least a single argument")
+	}
+
+	feedfollow, err := s.db.GetFeedFollowsForUserByURL(context.Background(), database.GetFeedFollowsForUserByURLParams{
+		ID:  user.ID,
+		Url: cmd.args[0],
+	})
+
+	if err != nil {
+		return fmt.Errorf("error getting FollowsForUserByURL: %w", err)
+	}
+
+	err = s.db.DeleteFeedById(context.Background(), feedfollow.FeedID)
+
+	if err != nil {
+		return fmt.Errorf("error deleteing feed record: %w", err)
 	}
 
 	return nil
@@ -368,6 +378,7 @@ func main() {
 	c.register("feeds", handlerGetFeeds)
 	c.register("follow", middlewareLoggedIn(handlerFollow))
 	c.register("following", middlewareLoggedIn(handlerFollowing))
+	c.register("unfollow", middlewareLoggedIn(handlerUnfollow))
 	c.register("help", func(*state, command) error { return fmt.Errorf("No. https://www.youtube.com/watch?v=gWm2NzNLc_A") })
 	if len(os.Args) == 1 {
 		fmt.Println(`No command was specified. Try "help".`)

@@ -93,7 +93,9 @@ const getFeedFollowsForUser = `-- name: GetFeedFollowsForUser :many
 SELECT
     u.name AS user_name,
     f.name AS feed_name,
-    f.url AS feed_url
+    f.url AS feed_url,
+    f.id as feed_id,
+    u.id as user_id
 FROM feed_follows AS ff
 INNER JOIN feeds AS f ON f.id = ff.feed_id
 INNER JOIN users AS u ON u.id = ff.user_id
@@ -104,6 +106,8 @@ type GetFeedFollowsForUserRow struct {
 	UserName string
 	FeedName string
 	FeedUrl  string
+	FeedID   uuid.UUID
+	UserID   uuid.UUID
 }
 
 func (q *Queries) GetFeedFollowsForUser(ctx context.Context, id uuid.UUID) ([]GetFeedFollowsForUserRow, error) {
@@ -115,7 +119,13 @@ func (q *Queries) GetFeedFollowsForUser(ctx context.Context, id uuid.UUID) ([]Ge
 	var items []GetFeedFollowsForUserRow
 	for rows.Next() {
 		var i GetFeedFollowsForUserRow
-		if err := rows.Scan(&i.UserName, &i.FeedName, &i.FeedUrl); err != nil {
+		if err := rows.Scan(
+			&i.UserName,
+			&i.FeedName,
+			&i.FeedUrl,
+			&i.FeedID,
+			&i.UserID,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -127,4 +137,53 @@ func (q *Queries) GetFeedFollowsForUser(ctx context.Context, id uuid.UUID) ([]Ge
 		return nil, err
 	}
 	return items, nil
+}
+
+const getFeedFollowsForUserByURL = `-- name: GetFeedFollowsForUserByURL :one
+SELECT
+    u.name AS user_name,
+    f.name AS feed_name,
+    f.url AS feed_url,
+    f.id as feed_id,
+    u.id as user_id
+FROM feed_follows AS ff
+INNER JOIN feeds AS f ON f.id = ff.feed_id
+INNER JOIN users AS u ON u.id = ff.user_id
+WHERE u.id = $1 AND f.url = $2
+`
+
+type GetFeedFollowsForUserByURLParams struct {
+	ID  uuid.UUID
+	Url string
+}
+
+type GetFeedFollowsForUserByURLRow struct {
+	UserName string
+	FeedName string
+	FeedUrl  string
+	FeedID   uuid.UUID
+	UserID   uuid.UUID
+}
+
+func (q *Queries) GetFeedFollowsForUserByURL(ctx context.Context, arg GetFeedFollowsForUserByURLParams) (GetFeedFollowsForUserByURLRow, error) {
+	row := q.db.QueryRowContext(ctx, getFeedFollowsForUserByURL, arg.ID, arg.Url)
+	var i GetFeedFollowsForUserByURLRow
+	err := row.Scan(
+		&i.UserName,
+		&i.FeedName,
+		&i.FeedUrl,
+		&i.FeedID,
+		&i.UserID,
+	)
+	return i, err
+}
+
+const resetFeedFollows = `-- name: ResetFeedFollows :exec
+
+DELETE FROM feed_follows
+`
+
+func (q *Queries) ResetFeedFollows(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, resetFeedFollows)
+	return err
 }

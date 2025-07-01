@@ -24,6 +24,11 @@ WHERE url = $1;
 
 DELETE FROM feeds;
 
+-- name: DeleteFeedById :exec
+
+DELETE FROM feeds
+WHERE id = $1;
+
 -- name: GetFeedsRaw :many
 
 SELECT * FROM feeds;
