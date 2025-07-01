@@ -127,11 +127,25 @@ func handlerGetUsers(s *state, cmd command, user database.User) error {
 }
 
 func handlerAggregate(s *state, cmd command) error {
-	feed, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
-	if err != nil {
-		return err
+	if len(cmd.args) == 0 {
+		return fmt.Errorf("aggregate expects at least a single argument")
 	}
-	fmt.Println(feed)
+
+	timeBetweenReqs, err := time.ParseDuration(cmd.args[0])
+	if len(cmd.args) == 0 {
+		return fmt.Errorf("arument given to aggregate command is suspect: %w", err)
+	}
+
+	fmt.Printf("Collecting feeds every: %s\n", cmd.args[0])
+
+	ticker := time.NewTicker(timeBetweenReqs)
+	for ; ; <-ticker.C {
+		err = scrapeFeeds(s)
+		if err != nil {
+			return fmt.Errorf("error scraping feed: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -345,6 +359,38 @@ func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) 
 	}
 
 	return newHandler
+}
+
+func scrapeFeeds(s *state) error {
+	sqlFeed, err := s.db.GetNextFeedToFetch(context.Background())
+	if err != nil {
+		return fmt.Errorf("error getting oldest feed: %w", err)
+	}
+
+	err = s.db.MarkFeedFetched(context.Background(), database.MarkFeedFetchedParams{
+		ID: sqlFeed.ID,
+		LastFetchedAt: sql.NullTime{
+			Time:  time.Now(),
+			Valid: true,
+		},
+	})
+
+	if err != nil {
+		return fmt.Errorf("error marking oldest feed as fetched: %w", err)
+	}
+
+	rssFeed, err := fetchFeed(context.Background(), sqlFeed.Url)
+
+	if err != nil {
+		return fmt.Errorf("error fetching RSS Feed: %w", err)
+	}
+
+	fmt.Printf("\n\n\nItems of RSS Feed %s:\n", rssFeed.Channel.Title)
+	for _, item := range rssFeed.Channel.Item {
+		fmt.Println("*", item.Title)
+	}
+
+	return nil
 }
 
 func main() {
