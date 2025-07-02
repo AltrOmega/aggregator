@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 )
 
@@ -142,7 +144,7 @@ func handlerAggregate(s *state, cmd command) error {
 	for ; ; <-ticker.C {
 		err = scrapeFeeds(s)
 		if err != nil {
-			return fmt.Errorf("error scraping feed: %w", err)
+			fmt.Printf("error scraping feed: %w\n\n", err)
 		}
 	}
 
@@ -335,14 +337,25 @@ func handlerUnfollow(s *state, cmd command, user database.User) error {
 		Url: cmd.args[0],
 	})
 
-	if err != nil {
-		return fmt.Errorf("error getting FollowsForUserByURL: %w", err)
-	}
+	if err != nil { // disgusting
+		feedfollow_2, err := s.db.GetFeedFollowsForUserByName(context.Background(), database.GetFeedFollowsForUserByNameParams{
+			ID:   user.ID,
+			Name: cmd.args[0],
+		})
+		if err != nil {
+			return fmt.Errorf("error getting FollowsForUser: %w", err)
+		}
 
-	err = s.db.DeleteFeedById(context.Background(), feedfollow.FeedID)
+		err = s.db.DeleteFeedById(context.Background(), feedfollow_2.FeedID)
+		if err != nil {
+			return fmt.Errorf("error deleteing feed record: %w", err)
+		}
+	} else {
+		err = s.db.DeleteFeedById(context.Background(), feedfollow.FeedID)
 
-	if err != nil {
-		return fmt.Errorf("error deleteing feed record: %w", err)
+		if err != nil {
+			return fmt.Errorf("error deleteing feed record: %w", err)
+		}
 	}
 
 	return nil
@@ -359,6 +372,13 @@ func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) 
 	}
 
 	return newHandler
+}
+
+func TruncateTooLongString(s string, maxLength int) string {
+	if len(s) > maxLength {
+		return s[:maxLength]
+	}
+	return s
 }
 
 func scrapeFeeds(s *state) error {
@@ -385,9 +405,54 @@ func scrapeFeeds(s *state) error {
 		return fmt.Errorf("error fetching RSS Feed: %w", err)
 	}
 
-	fmt.Printf("\n\n\nItems of RSS Feed %s:\n", rssFeed.Channel.Title)
-	for _, item := range rssFeed.Channel.Item {
-		fmt.Println("*", item.Title)
+	now := time.Now()
+	fmt.Printf("\n\nFeed: %s\n", rssFeed.Channel.Title)
+	for num, item := range rssFeed.Channel.Item {
+		fmt.Printf("Item num: %d/%d | ", num+1, len(rssFeed.Channel.Item))
+		parsedTime, timeErr := time.Parse(time.RFC1123, item.PubDate)
+		// just ignoring the pub date in case of errors on given item
+		if timeErr != nil {
+			fmt.Printf("Error ocured on TIME parse of Title: %s\n", item.Title)
+		}
+
+		itemTitle := TruncateTooLongString(item.Title, 255)
+		itemDescription := TruncateTooLongString(item.Description, 255)
+		if len(item.Link) > 255 {
+			fmt.Printf("Cant add post, too long url Title: %s\n", item.Title)
+			continue
+		}
+		_, postErr := s.db.CreatePost(context.Background(), database.CreatePostParams{
+			ID:        uuid.New(),
+			CreatedAt: now,
+			UpdatedAt: now,
+			Title:     itemTitle,
+			Url:       item.Link,
+			Description: sql.NullString{
+				String: itemDescription,
+				Valid:  itemDescription != "",
+			},
+			PublishedAt: sql.NullTime{
+				Time:  parsedTime,
+				Valid: timeErr != nil || item.PubDate != "",
+			},
+			FeedID: uuid.NullUUID{
+				UUID:  sqlFeed.ID,
+				Valid: true,
+			},
+		})
+
+		if postErr != nil {
+			var pqErr *pq.Error
+			if errors.As(postErr, &pqErr) && pqErr.Code == "23505" {
+				fmt.Printf("Post already exists. Ignoring. Title: %s\n", item.Title)
+				continue
+			}
+			fmt.Printf("Error ocured on item of Title: %s\n", item.Title)
+			fmt.Println(postErr)
+		} else {
+			fmt.Printf("Post Created for Title: %s\n", item.Title)
+		}
+
 	}
 
 	return nil

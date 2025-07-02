@@ -47,3 +47,15 @@ FROM feed_follows AS ff
 INNER JOIN feeds AS f ON f.id = ff.feed_id
 INNER JOIN users AS u ON u.id = ff.user_id
 WHERE u.id = $1 AND f.url = $2;
+
+-- name: GetFeedFollowsForUserByName :one
+SELECT
+    u.name AS user_name,
+    f.name AS feed_name,
+    f.url AS feed_url,
+    f.id as feed_id,
+    u.id as user_id
+FROM feed_follows AS ff
+INNER JOIN feeds AS f ON f.id = ff.feed_id
+INNER JOIN users AS u ON u.id = ff.user_id
+WHERE u.id = $1 AND f.name = $2;

@@ -139,6 +139,45 @@ func (q *Queries) GetFeedFollowsForUser(ctx context.Context, id uuid.UUID) ([]Ge
 	return items, nil
 }
 
+const getFeedFollowsForUserByName = `-- name: GetFeedFollowsForUserByName :one
+SELECT
+    u.name AS user_name,
+    f.name AS feed_name,
+    f.url AS feed_url,
+    f.id as feed_id,
+    u.id as user_id
+FROM feed_follows AS ff
+INNER JOIN feeds AS f ON f.id = ff.feed_id
+INNER JOIN users AS u ON u.id = ff.user_id
+WHERE u.id = $1 AND f.name = $2
+`
+
+type GetFeedFollowsForUserByNameParams struct {
+	ID   uuid.UUID
+	Name string
+}
+
+type GetFeedFollowsForUserByNameRow struct {
+	UserName string
+	FeedName string
+	FeedUrl  string
+	FeedID   uuid.UUID
+	UserID   uuid.UUID
+}
+
+func (q *Queries) GetFeedFollowsForUserByName(ctx context.Context, arg GetFeedFollowsForUserByNameParams) (GetFeedFollowsForUserByNameRow, error) {
+	row := q.db.QueryRowContext(ctx, getFeedFollowsForUserByName, arg.ID, arg.Name)
+	var i GetFeedFollowsForUserByNameRow
+	err := row.Scan(
+		&i.UserName,
+		&i.FeedName,
+		&i.FeedUrl,
+		&i.FeedID,
+		&i.UserID,
+	)
+	return i, err
+}
+
 const getFeedFollowsForUserByURL = `-- name: GetFeedFollowsForUserByURL :one
 SELECT
     u.name AS user_name,
