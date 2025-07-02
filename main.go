@@ -460,12 +460,34 @@ func scrapeFeeds(s *state) error {
 }
 
 func handlerBrowse(s *state, cmd command, user database.User) error {
-	limit := 2
+	var limit int32 = int32(2)
 	if len(cmd.args) == 1 {
-		limit, err := strconv.Atoi(cmd.args[0])
+		num_, err := strconv.Atoi(cmd.args[0])
 		if err != nil {
 			return fmt.Errorf("invalid limit, must be number")
 		}
+
+		limit = int32(num_)
+	}
+
+	posts, err := s.db.GetPostsForUser(context.Background(), database.GetPostsForUserParams{
+		UserID: uuid.NullUUID{
+			UUID:  user.ID,
+			Valid: true,
+		},
+		Limit:  limit,
+		Offset: 0,
+	})
+
+	if err != nil {
+		return fmt.Errorf("Error geting posts for user: %w", err)
+	}
+
+	fmt.Println("Posts: ")
+	for _, post := range posts {
+		fmt.Printf("Date: %s, Title: %s\nDescription:\n", post.PublishedAt.Time.Format("2006-01-02"), post.Title)
+		fmt.Println(post.Description.String)
+		fmt.Println()
 	}
 
 	return nil
