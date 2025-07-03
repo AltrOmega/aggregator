@@ -1,8 +1,8 @@
 package main
 
 import (
-	"aggreGATOR/internal/config"
-	"aggreGATOR/internal/database"
+	"aggregator/internal/config"
+	"aggregator/internal/database"
 	"context"
 	"database/sql"
 	"encoding/xml"
